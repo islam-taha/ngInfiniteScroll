@@ -9,7 +9,8 @@ mod.directive 'infiniteScroll', ['$rootScope', '$window', '$timeout', 'THROTTLE_
     infiniteScrollContainer: '='
     infiniteScrollDistance: '='
     infiniteScrollDisabled: '='
-    infiniteScrollUseDocumentBottom: '='
+    infiniteScrollUseDocumentBottom: '=',
+    infiniteScrollHorizontal: '='
 
   link: (scope, elem, attrs) ->
     windowElement = angular.element($window)
@@ -20,11 +21,17 @@ mod.directive 'infiniteScroll', ['$rootScope', '$window', '$timeout', 'THROTTLE_
     container = null
     immediateCheck = true
     useDocumentBottom = false
+    scrollHorizontal = false
 
     height = (elem) ->
       elem = elem[0] or elem
 
       if isNaN(elem.offsetHeight) then elem.document.documentElement.clientHeight else elem.offsetHeight
+
+    width = (elem) ->
+      elem = elem[0] or elem
+
+      if isNaN(elem.offsetWidth) then elem.document.documentElement.clientWidth else elem.offsetWidth
 
     offsetTop = (elem) ->
       if not elem[0].getBoundingClientRect or elem.css('none')
@@ -32,10 +39,21 @@ mod.directive 'infiniteScroll', ['$rootScope', '$window', '$timeout', 'THROTTLE_
 
       elem[0].getBoundingClientRect().top + pageYOffset(elem)
 
+    offsetLeft = (elem) ->
+      if not elem[0].getBoundingClientRect or elem.css('none')
+        return
+
+      elem[0].getBoundingClientRect().left + pageXOffset(elem)
+
     pageYOffset = (elem) ->
       elem = elem[0] or elem
 
       if isNaN(window.pageYOffset) then elem.document.documentElement.scrollTop else elem.ownerDocument.defaultView.pageYOffset
+
+    pageXOffset = (elem) ->
+      elem = elem[0] or elem
+
+      if isNaN(window.pageXOffset) then elem.document.documentElement.scrollLeft else elem.ownerDocument.defaultView.pageXOffset
 
     # infinite-scroll specifies a function to call when the window,
     # or some other container specified by infinite-scroll-container,
@@ -45,20 +63,32 @@ mod.directive 'infiniteScroll', ['$rootScope', '$window', '$timeout', 'THROTTLE_
     # called in order to throttle the function call.
     handler = ->
       if container == windowElement
-        containerBottom = height(container) + pageYOffset(container[0].document.documentElement)
-        elementBottom = offsetTop(elem) + height(elem)
+        if scrollHorizontal
+          containerBottom = width(container) + pageXOffset(container[0].document.documentElement)
+          elementBottom = offsetLeft(elem) + width(elem)
+        else
+          containerBottom = height(container) + pageYOffset(container[0].document.documentElement)
+          elementBottom = offsetTop(elem) + height(elem)
       else
-        containerBottom = height(container)
+        containerBottom = if scrollHorizontal then width(container) else height(container)
         containerTopOffset = 0
         if offsetTop(container) != undefined
-          containerTopOffset = offsetTop(container)
-        elementBottom = offsetTop(elem) - containerTopOffset + height(elem)
+          containerTopOffset = if scrollHorizontal then offsetLeft(container) else offsetTop(container)
+          if scrollHorizontal
+            elementBottom = offsetLeft(elem) - containerTopOffset + width(elem)
+          else
+            elementBottom = offsetTop(elem) - containerTopOffset + height(elem)
 
       if(useDocumentBottom)
-        elementBottom = height((elem[0].ownerDocument || elem[0].document).documentElement)
-
+        if scrollHorizontal
+          elementBottom = width((elem[0].ownerDocument || elem[0].document).documentElement)
+        else
+          elementBottom = height((elem[0].ownerDocument || elem[0].document).documentElement)
       remaining = elementBottom - containerBottom
-      shouldScroll = remaining <= height(container) * scrollDistance + 1
+      if scrollHorizontal
+        shouldScroll = remaining <= width(container) * scrollDistance + 1
+      else
+        shouldScroll = remaining <= height(container) * scrollDistance + 1
 
       if shouldScroll
         checkWhenEnabled = true
@@ -103,6 +133,13 @@ mod.directive 'infiniteScroll', ['$rootScope', '$window', '$timeout', 'THROTTLE_
 
     scope.$on '$destroy', ->
       container.off 'scroll', handler
+
+    # infinite-scroll-horizontal switches infinite-scroll to scroll horizontally
+    # instead of vertically 
+    handleInfiniteScrollHorizontal = (v) ->
+      scrollHorizontal = v
+    scope.$watch('infiniteScrollHorizontal', handleInfiniteScrollHorizontal)
+    handleInfiniteScrollHorizontal(scope.infiniteScrollHorizontal)
 
     # infinite-scroll-distance specifies how close to the bottom of the page
     # the window is allowed to be before we trigger a new scroll. The value
@@ -179,7 +216,7 @@ mod.directive 'infiniteScroll', ['$rootScope', '$window', '$timeout', 'THROTTLE_
 
     # infinte-scoll-immediate-check sets whether or not run the
     # expression passed on infinite-scroll for the first time when the
-    # directive first loads, before any actual scroll.
+    # directive first loads, before any actual scroll.
     if attrs.infiniteScrollImmediateCheck?
       immediateCheck = scope.$eval(attrs.infiniteScrollImmediateCheck)
 
